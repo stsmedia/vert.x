@@ -35,6 +35,8 @@ import org.jboss.netty.channel.group.ChannelGroupFutureListener;
 import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioSocketChannel;
+import org.jboss.netty.channel.socket.nio.NioWorker;
+import org.jboss.netty.channel.socket.nio.NioWorkerPool;
 import org.jboss.netty.handler.ssl.SslHandler;
 import org.jboss.netty.handler.stream.ChunkedWriteHandler;
 import org.vertx.java.core.Handler;
@@ -47,15 +49,15 @@ import javax.net.ssl.SSLEngine;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 
 /**
  * <p>Encapsulates a server that understands TCP or SSL.</p>
  *
- * <p>Instances of this class can only be used from the event loop that created it. When connections are accepted by the server
- * they are supplied to the user in the form of a {@link NetSocket} instance that is passed via an instance of
- * {@link org.vertx.java.core.Handler} which is supplied to the server via the {@link #connectHandler} method.</p>
  *
  * @author <a href="http://tfox.org">Tim Fox</a>
  */
@@ -64,9 +66,147 @@ public class NetServer extends NetServerBase {
   private static final Logger log = Logger.getLogger(NetServer.class);
 
   private Map<Channel, NetSocket> socketMap = new ConcurrentHashMap();
-  private Handler<NetSocket> connectHandler;
   private ChannelGroup serverChannelGroup;
   private boolean listening;
+
+  private NetServerWorkerPool availableWorkers = new NetServerWorkerPool();
+  private Map<NioWorker, Handlers> handlerMap = new ConcurrentHashMap<>();
+
+  // This is currently a hack
+  private static class NetServerWorkerPool extends NioWorkerPool {
+
+    NetServerWorkerPool() {
+      super(0, null);
+    }
+
+    int pos;
+
+    List<NioWorker> workers = new ArrayList<>();
+
+    public synchronized NioWorker nextWorker() {
+      NioWorker worker = workers.get(pos);
+      pos++;
+      checkPos();
+      return worker;
+    }
+
+    public synchronized void addWorker(NioWorker worker) {
+      if (!workers.contains(worker)) {
+        workers.add(worker);
+      }
+    }
+
+    public synchronized void removeWorker(NioWorker worker) {
+      workers.remove(worker);
+      checkPos();
+    }
+
+    private void checkPos() {
+      if (pos == workers.size()) {
+        pos = 0;
+      }
+    }
+  }
+
+  private static class Handlers {
+    int pos;
+    final List<HandlerHolder> list = new ArrayList<>();
+    HandlerHolder chooseHandler() {
+      HandlerHolder handler = list.get(pos);
+      pos++;
+      checkPos();
+      return handler;
+    }
+
+    void addHandler(HandlerHolder handler) {
+      list.add(handler);
+    }
+
+    boolean removeHandler(HandlerHolder handler) {
+      if (list.remove(handler)) {
+        checkPos();
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    boolean isEmpty() {
+      return list.isEmpty();
+    }
+
+    void checkPos() {
+      if (pos == list.size()) {
+        pos = 0;
+      }
+    }
+  }
+
+  private static class HandlerHolder {
+    final long contextID;
+    final Handler<NetSocket> handler;
+
+    HandlerHolder(long contextID, Handler<NetSocket> handler) {
+      this.contextID = contextID;
+      this.handler = handler;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+
+      HandlerHolder that = (HandlerHolder) o;
+
+      if (contextID != that.contextID) return false;
+      if (handler != null ? !handler.equals(that.handler) : that.handler != null) return false;
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      int result = (int) (contextID ^ (contextID >>> 32));
+      result = 31 * result + (handler != null ? handler.hashCode() : 0);
+      return result;
+    }
+  }
+
+
+  private synchronized HandlerHolder chooseHandler(NioWorker worker) {
+    Handlers handlers = handlerMap.get(worker);
+    if (handlers == null) {
+      return null;
+    }
+    return handlers.chooseHandler();
+  }
+
+  public synchronized void addConnectHandler(Handler<NetSocket> handler) {
+    NioWorker worker = VertxInternal.instance.getWorkerForContextID(Vertx.instance.getContextID());
+    availableWorkers.addWorker(worker);
+    Handlers handlers = handlerMap.get(worker);
+    if (handlers == null) {
+      handlers = new Handlers();
+      handlerMap.put(worker, handlers);
+    }
+    handlers.addHandler(new HandlerHolder(Vertx.instance.getContextID(), handler));
+  }
+
+  public synchronized void removeConnectHandler(Handler<NetSocket> handler) {
+    NioWorker worker = VertxInternal.instance.getWorkerForContextID(Vertx.instance.getContextID());
+    Handlers handlers = handlerMap.get(worker);
+    if (!handlers.removeHandler(new HandlerHolder(Vertx.instance.getContextID(), handler))) {
+      throw new IllegalStateException("Can't find handler");
+    }
+    if (handlers.isEmpty()) {
+      handlerMap.remove(worker);
+      availableWorkers.removeWorker(worker);
+    }
+  }
+
+  public synchronized boolean hasHandlers() {
+    return availableWorkers != null;
+  }
 
   /**
    * Create a new NetServer instance.
@@ -75,15 +215,32 @@ public class NetServer extends NetServerBase {
     super();
   }
 
-  /**
-   * Supply a connect handler for this server. The server can only have at most one connect handler at any one time.
-   * As the server accepts TCP or SSL connections it creates an instance of {@link NetSocket} and passes it to the
-   * connect handler.
-   * @return a reference to this so multiple method calls can be chained together
-   */
+  private NetConfig config;
+
+  public NetServer(NetConfig config) {
+    super();
+    this.config = config;
+
+    //TODO configure the server with the config
+  }
+
+  public NetConfig getConfig() {
+    return config;
+  }
+
+//  /**
+//   * Supply a connect handler for this server. The server can only have at most one connect handler at any one time.
+//   * As the server accepts TCP or SSL connections it creates an instance of {@link NetSocket} and passes it to the
+//   * connect handler.
+//   * @return a reference to this so multiple method calls can be chained together
+//   */
+
+
+
+  // Keep this in for now so it compiles
   public NetServer connectHandler(Handler<NetSocket> connectHandler) {
-    checkThread();
-    this.connectHandler = connectHandler;
+//    checkThread();
+//    this.connectHandler = connectHandler;
     return this;
   }
 
@@ -206,9 +363,9 @@ public class NetServer extends NetServerBase {
    */
   public NetServer listen(int port, String host) {
     checkThread();
-    if (connectHandler == null) {
-      throw new IllegalStateException("Set connect handler first");
-    }
+//    if (connectHandler == null) {
+//      throw new IllegalStateException("Set connect handler first");
+//    }
     if (listening) {
       throw new IllegalStateException("Listen already called");
     }
@@ -219,7 +376,7 @@ public class NetServer extends NetServerBase {
     ChannelFactory factory =
         new NioServerSocketChannelFactory(
             VertxInternal.instance.getAcceptorPool(),
-            VertxInternal.instance.getWorkerPool());
+            availableWorkers);
     ServerBootstrap bootstrap = new ServerBootstrap(factory);
 
     checkSSL();
@@ -313,15 +470,26 @@ public class NetServer extends NetServerBase {
     @Override
     public void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e) {
       final NioSocketChannel ch = (NioSocketChannel) e.getChannel();
-      final long contextID = VertxInternal.instance.associateContextWithWorker(ch.getWorker());
-      runOnCorrectThread(ch, new Runnable() {
+
+      NioWorker worker = ch.getWorker();
+
+      //Choose a handler
+      final HandlerHolder handler = chooseHandler(worker);
+
+      if (handler == null) {
+        //Ignore
+        return;
+      }
+
+      VertxInternal.instance.executeOnContext(handler.contextID, new Runnable() {
         public void run() {
-          VertxInternal.instance.setContextID(contextID);
-          NetSocket sock = new NetSocket(ch, contextID, Thread.currentThread());
+          VertxInternal.instance.setContextID(handler.contextID);
+          NetSocket sock = new NetSocket(ch, handler.contextID, Thread.currentThread());
           socketMap.put(ch, sock);
-          connectHandler.handle(sock);
+          handler.handler.handle(sock);
         }
       });
+
     }
 
     @Override

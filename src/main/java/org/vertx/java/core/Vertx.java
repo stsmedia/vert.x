@@ -84,4 +84,6 @@ public interface Vertx {
    * loops.
    */
   void go(Runnable runnable);
+
+  void runApp(Class<? extends VertxApp> appClass);
 }

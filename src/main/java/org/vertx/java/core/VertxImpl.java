@@ -260,6 +260,25 @@ class VertxImpl implements VertxInternal {
     return setTimeout(delay, false, handler);
   }
 
+  public void runApp(Class<? extends VertxApp> appClass) {
+    //TODO - load app on own classloader
+
+    try {
+      final VertxApp app = appClass.newInstance();
+
+      this.go(new Runnable() {
+        public void run() {
+          app.start();
+        }
+      });
+
+    } catch (Exception e) {
+      log.error("Failed to deploy application", e);
+      throw new RuntimeException("Failed to deploy application" + appClass);
+    }
+
+  }
+
 
   VertxImpl() {
     timer.start();
