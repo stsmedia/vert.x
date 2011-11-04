@@ -85,5 +85,5 @@ public interface Vertx {
    */
   void go(Runnable runnable);
 
-  void runApp(Class<? extends VertxApp> appClass);
+  void runApp(Class<? extends VertxApp> appClass, int instances);
 }
