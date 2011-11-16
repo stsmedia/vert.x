@@ -16,6 +16,10 @@
 
 package org.vertx.java.core.http;
 
+import java.io.File;
+import java.util.LinkedList;
+import java.util.Queue;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
@@ -28,10 +32,6 @@ import org.vertx.java.core.SimpleHandler;
 import org.vertx.java.core.Vertx;
 import org.vertx.java.core.buffer.Buffer;
 import org.vertx.java.core.http.ws.WebSocketFrame;
-
-import java.io.File;
-import java.util.LinkedList;
-import java.util.Queue;
 
 class ServerConnection extends AbstractConnection {
 

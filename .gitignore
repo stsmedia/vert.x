@@ -6,3 +6,8 @@ test-output
 Scratch.java
 ScratchTest.java
 .yardoc
+.classpath
+.project
+.settings
+bin
+org.eclipse*

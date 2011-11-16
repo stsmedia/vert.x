@@ -13,74 +13,68 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-
 package org.vertx.java.core.http.ws;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 
 /**
- * A Web Socket frame that represents either text or binary data.
- *
+ * Base class for web socket frames
+ * 
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
- * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
-public interface WebSocketFrame {
+public abstract class WebSocketFrame {
 
-  /**
-   * List of all frame types.
-   */
-  public enum FrameType {
-    CONTINUATION,
-    TEXT,
-    BINARY,
-    CLOSE,
-    PING,
-    PONG,
-  }
+    /**
+     * Flag to indicate if this frame is the final fragment in a message. The
+     * first fragment (frame) may also be the final fragment.
+     */
+    private boolean finalFragment = true;
 
-  ;
+    /**
+     * RSV1, RSV2, RSV3 used for extensions
+     */
+    private int rsv = 0;
 
-  FrameType getType();
+    /**
+     * Contents of this frame
+     */
+    private ChannelBuffer binaryData;
 
-  /**
-   * Returns {@code true} if and only if the content of this frame is a string
-   * encoded in UTF-8.
-   */
-  boolean isText();
+    /**
+     * Returns binary data
+     */
+    public ChannelBuffer getBinaryData() {
+        return binaryData;
+    }
 
-  /**
-   * Returns {@code true} if and only if the content of this frame is an
-   * arbitrary binary data.
-   */
-  boolean isBinary();
+    /**
+     * Sets the binary data for this frame
+     */
+    public void setBinaryData(ChannelBuffer binaryData) {
+        this.binaryData = binaryData;
+    }
 
-  /**
-   * Returns the content of this frame as-is, with no UTF-8 decoding.
-   */
-  ChannelBuffer getBinaryData();
+    /**
+     * Flag to indicate if this frame is the final fragment in a message. The
+     * first fragment (frame) may also be the final fragment.
+     */
+    public boolean isFinalFragment() {
+        return finalFragment;
+    }
 
-  /**
-   * Converts the content of this frame into a UTF-8 string and returns the
-   * converted string.
-   */
-  String getTextData();
+    public void setFinalFragment(boolean finalFragment) {
+        this.finalFragment = finalFragment;
+    }
 
-  /**
-   * Sets the type and the content of this frame.
-   *
-   * @param binaryData the content of the frame.  If <tt>(type &amp; 0x80 == 0)</tt>,
-   *                   it must be encoded in UTF-8.
-   * @throws IllegalArgumentException if If <tt>(type &amp; 0x80 == 0)</tt> and the data is not encoded
-   *                                  in UTF-8
-   */
-  void setBinaryData(ChannelBuffer binaryData);
+    /**
+     * Bits used for extensions to the standard.
+     */
+    public int getRsv() {
+        return rsv;
+    }
 
-  void setTextData(String textData);
+    public void setRsv(int rsv) {
+        this.rsv = rsv;
+    }
 
-  /**
-   * Returns the string representation of this frame.  Please note that this
-   * method is not identical to {@link #getTextData()}.
-   */
-  String toString();
 }

@@ -16,6 +16,12 @@
 
 package org.vertx.java.core.http;
 
+import java.net.InetSocketAddress;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.net.ssl.SSLEngine;
+
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
@@ -46,11 +52,6 @@ import org.vertx.java.core.http.ws.WebSocketFrame;
 import org.vertx.java.core.internal.VertxInternal;
 import org.vertx.java.core.logging.Logger;
 import org.vertx.java.core.net.NetClientBase;
-
-import javax.net.ssl.SSLEngine;
-import java.net.InetSocketAddress;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * <p>An asynchronous, pooling, HTTP 1.1 client</p>
