@@ -16,14 +16,12 @@
 
 package org.vertx.java.core.http;
 
-import org.jboss.netty.handler.codec.http.websocket.DefaultWebSocketFrame;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.Vertx;
 import org.vertx.java.core.buffer.Buffer;
 import org.vertx.java.core.http.ws.BinaryWebSocketFrame;
 import org.vertx.java.core.http.ws.TextWebSocketFrame;
 import org.vertx.java.core.http.ws.WebSocketFrame;
-import org.vertx.java.core.http.ws.WebSocketFrameType;
 import org.vertx.java.core.streams.ReadStream;
 import org.vertx.java.core.streams.WriteStream;
 

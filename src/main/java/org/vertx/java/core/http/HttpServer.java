@@ -352,7 +352,7 @@ public class HttpServer extends NetServerBase {
 					if (HttpHeaders.is100ContinueExpected(request)) {
 						ch.write(new DefaultHttpResponse(HTTP_1_1, CONTINUE));
 					}
-					if (request.getHeader(CONNECTION).contains(UPGRADE) && WEBSOCKET.equalsIgnoreCase(request.getHeader(UPGRADE))) {
+					if (request.containsHeader(CONNECTION) && request.getHeader(CONNECTION).contains(UPGRADE) && WEBSOCKET.equalsIgnoreCase(request.getHeader(UPGRADE))) {
 						webSocketOpeningHandshake(request, ctx, conn);
 					} else {
 						conn.handleMessage(msg);
